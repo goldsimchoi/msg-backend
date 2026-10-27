@@ -9,12 +9,13 @@ from apps.board.views import (
 from apps.common.health import healthz
 from apps.common.views import api_not_found
 from apps.instances.secret_views import RuntimeSecretResolveView
-from apps.challenge.checker_views import CheckerPayloadView, CheckerSecretView, CheckerEventsView
+from apps.challenge.checker_views import CheckerPayloadView, CheckerSecretView, CheckerEventsView, CheckerTokenRefreshView
 
 urlpatterns = [
     path("internal/v1/checker-submissions/<uuid:submission_id>/payload", CheckerPayloadView.as_view(), name="checker-payload"),
     path("internal/v1/checker-submissions/<uuid:submission_id>/secret", CheckerSecretView.as_view(), name="checker-secret"),
     path("internal/v1/checker-submissions/<uuid:submission_id>/events", CheckerEventsView.as_view(), name="checker-events"),
+    path("internal/v1/checker-submissions/<uuid:submission_id>/token", CheckerTokenRefreshView.as_view(), name="checker-token-refresh"),
     path("internal/v1/runtime-secrets/resolve", RuntimeSecretResolveView.as_view(), name="runtime-secrets-resolve"),
     path("healthz", healthz),
     path("admin/", admin.site.urls),

@@ -314,6 +314,8 @@ def accept_exe(user, challenge_id, key, uploaded_file):
                 )
             secret = exe_flag_secret(challenge)
             submission_id = uuid.uuid4()
+            direct_windows = settings.EXE_WINDOWS_DIRECT_RUNTIME_ENABLED
+            pool_id = uuid.UUID(settings.EXE_WINDOWS_RUNTIME_POOL_ID) if direct_windows else None
             storage = private_payload_storage()
             payload_key = storage.save(
                 f"{submission_id}/payload.exe", ContentFile(payload)
@@ -330,12 +332,16 @@ def accept_exe(user, challenge_id, key, uploaded_file):
                 payload_size=len(payload),
                 file_name=name,
                 flag_secret=secret,
+                status=ExeSubmission.Status.ASSIGNED if direct_windows else ExeSubmission.Status.QUEUED,
+                lease_id=uuid.uuid4() if direct_windows else None,
+                worker_id=pool_id,
                 config_snapshot={
                     "version": remote.version,
                     "environment": remote.environment,
                     "timeout_seconds": remote.timeout_seconds,
                     "max_file_bytes": remote.max_file_bytes,
                     "rate_limit_seconds": remote.rate_limit_seconds,
+                    **({"assignment_mode": "broker_pool"} if direct_windows else {}),
                 },
             )
         return submission, True

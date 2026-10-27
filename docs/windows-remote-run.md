@@ -1,5 +1,28 @@
 # Windows EXE 접수와 실행 연결
 
+## Windows 직접 Runtime 경로 (2026-10-27)
+
+`EXE_WINDOWS_DIRECT_RUNTIME_ENABLED=True`이면 새 `pwn-msgdriver` 제출은
+Backend → Runtime → Broker → Windows HTTPS 실행기로 전달된다. Scheduler의 Windows
+배정 API를 호출하지 않는다. `EXE_WINDOWS_RUNTIME_POOL_ID`에는 이 Backend의
+`EXE_CHECKERS_JSON`에 등록된 논리적 Runtime UUID를 설정한다. 내부·외부 Backend는
+각자 자신의 HTTPS 주소와 서비스 토큰으로 같은 Runtime에 연결한다.
+
+Backend는 제출 때 고유 assignment ID를 저장하고 `selection_mode=broker_pool`
+메타데이터를 보낸다. Runtime은 `/payload`에서 EXE를 읽고 Broker READY 목록에서
+설정된 HTTPS 실행기 인증서와 토큰이 있는 VM 하나를 선택한다. Broker가
+`started`를 200/RUNNING으로 승인해야 VM에 PUT한다. 결과를 저장하고
+`finished` 200/RESET_REQUIRED를 받은 다음 같은 Backend에 `RESULT`를 보낸다.
+VM이 없으면 작업은 Runtime DB에서 대기한다. 새 제출에는 직접 경로 표시가
+저장되므로 설정을 바꿔도 기존 Scheduler 배정 건의 의미는 바뀌지 않는다.
+
+현재 단계는 EXE 실행·출력·RESULT 수신까지다. VM 이미지 복구와 Broker reset,
+`CLEANUP(true)`는 아직 별도 작업이다. RESULT 뒤 참가자 상태가
+`CLEANUP_PENDING`으로 남고 새 실행 접수가 막히는 것은 이 단계의 예상 동작이다.
+직접 경로 작업 토큰은 7일 동안 유효하다. 만료 시 Runtime은 해당 Backend에
+등록된 서비스 토큰으로 내부 `/token` API에서 새 작업 토큰을 받고 DB에 저장한 뒤
+같은 RESULT 이벤트를 재전송한다. 아래 내용은 기존 Scheduler 배정 경로의 계약이다.
+
 백엔드 #167의 EXE 접수에 참가자 기록 조회, 관리자 설정, 작업별 파일·비밀값 제공과 결과 수신을 추가한다
 총 실행 횟수 제한은 없으며 기본 요청 간격은 팀별 30초다 관리자가 간격을 바꿀 수 있다
 

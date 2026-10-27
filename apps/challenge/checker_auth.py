@@ -100,6 +100,7 @@ def mint_job_token(submission):
             "CHECKER_NOT_READY", "실행 대상 배정을 확인해주세요", 409
         )
     now = timezone.now()
+    direct = submission.config_snapshot.get("assignment_mode") == "broker_pool"
     return jwt.encode(
         {
             "aud": AUDIENCE,
@@ -109,7 +110,7 @@ def mint_job_token(submission):
             "release_id": str(submission.release_id),
             "payload_sha256": submission.payload_sha256,
             "iat": now,
-            "exp": now + timedelta(minutes=45),
+            "exp": now + (timedelta(days=7) if direct else timedelta(minutes=45)),
         },
         signing_key(),
         algorithm="HS256",
@@ -174,13 +175,13 @@ def authenticated_submission(request, submission_id, *, file_access=False):
         raise ExeSubmissionError(
             "TOKEN_INVALID", "배정된 실행 요청과 일치하지 않습니다", 401
         )
+    direct = row.config_snapshot.get("assignment_mode") == "broker_pool"
     if file_access and (
         row.lease_released_at is not None
-        or row.vm_readiness != "READY"
+        or (not direct and row.vm_readiness != "READY")
         or row.cleanup_complete is True
         or row.status not in ["ASSIGNED", "RUNNING"]
-        or not row.lease_expires_at
-        or row.lease_expires_at <= timezone.now()
+        or (not direct and (not row.lease_expires_at or row.lease_expires_at <= timezone.now()))
     ):
         raise ExeSubmissionError(
             "SUBMISSION_NOT_FOUND", "파일을 제공할 수 없는 실행 요청입니다", 404

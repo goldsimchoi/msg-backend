@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import io
 import json
 from pathlib import Path
@@ -11,8 +12,9 @@ from rest_framework.parsers import BaseParser
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 
-from apps.challenge.checker_auth import authenticated_submission
+from apps.challenge.checker_auth import authenticated_submission, checker_configuration, mint_job_token
 from apps.challenge.checker_events import apply_event
+from apps.challenge.models import ExeSubmission
 from apps.challenge.exe_submissions import (
     ExeSubmissionError,
     MAX_PAYLOAD_BYTES,
@@ -111,3 +113,34 @@ class CheckerEventsView(CheckerView):
             raise ExeSubmissionError(
                 "EVENT_CONFLICT", "이미 다른 실행에서 사용한 결과입니다", 409
             ) from None
+
+
+class CheckerTokenRefreshView(CheckerView):
+    parser_classes = [EventJSONParser]
+
+    def post(self, request, submission_id):
+        row = ExeSubmission.objects.filter(pk=submission_id).first()
+        if row is None or row.config_snapshot.get("assignment_mode") != "broker_pool" or not row.lease_id or not row.worker_id:
+            raise ExeSubmissionError("SUBMISSION_NOT_FOUND", "실행 요청을 찾지 못했습니다", 404)
+        header = request.headers.get("Authorization", "")
+        try:
+            _, service_token, _ = checker_configuration(row.worker_id)
+        except ExeSubmissionError:
+            raise ExeSubmissionError("TOKEN_INVALID", "체커 인증 정보를 확인해주세요", 401) from None
+        if (
+            not header.startswith("Bearer ")
+            or len(header) > 4096
+            or not hmac.compare_digest(header[7:], service_token)
+        ):
+            raise ExeSubmissionError("TOKEN_INVALID", "체커 인증 정보를 확인해주세요", 401)
+        if (
+            not isinstance(request.data, dict)
+            or set(request.data) != {"assignment_id", "payload_sha256"}
+            or request.data["assignment_id"] != str(row.lease_id)
+            or not isinstance(request.data["payload_sha256"], str)
+            or not hmac.compare_digest(request.data["payload_sha256"], row.payload_sha256)
+        ):
+            raise ExeSubmissionError("INVALID_REQUEST", "실행 배정과 파일을 확인해주세요", 400)
+        response = ok({"submission_id": str(row.pk), "assignment_id": str(row.lease_id), "job_token": mint_job_token(row)})
+        response["Cache-Control"] = "no-store"
+        return response

@@ -1,4 +1,5 @@
 import re
+import uuid
 from datetime import timedelta
 from math import ceil
 
@@ -38,9 +39,20 @@ def _backend_ready(challenge):
         private_payload_storage,
     )
 
-    token = settings.SCHEDULER_API_TOKEN
-    if not isinstance(token, str) or not re.fullmatch(r"[\x21-\x7e]+", token):
-        return False
+    if settings.EXE_WINDOWS_DIRECT_RUNTIME_ENABLED:
+        from apps.challenge.checker_auth import checker_configuration
+
+        try:
+            pool = str(uuid.UUID(settings.EXE_WINDOWS_RUNTIME_POOL_ID))
+            if pool != settings.EXE_WINDOWS_RUNTIME_POOL_ID:
+                return False
+            checker_configuration(pool)
+        except (ValueError, TypeError, ExeSubmissionError):
+            return False
+    else:
+        token = settings.SCHEDULER_API_TOKEN
+        if not isinstance(token, str) or not re.fullmatch(r"[\x21-\x7e]+", token):
+            return False
     try:
         private_payload_storage()
         exe_flag_secret(challenge)

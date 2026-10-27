@@ -20,6 +20,7 @@ def checker_request(row, method):
     path = "/v1/checker-submissions" + (f"/{row.pk}" if method == "GET" else "")
     body = None
     if method == "POST":
+        direct = row.config_snapshot.get("assignment_mode") == "broker_pool"
         body = {
             "request_version": 1,
             "submission_id": str(row.pk),
@@ -27,10 +28,12 @@ def checker_request(row, method):
             "team_id": str(row.team_id),
             "challenge_id": str(row.challenge_id),
             "release_id": str(row.release_id),
-            "vm_id": row.vm_id,
-            "readiness_check_id": row.readiness_check_id,
             "payload_sha256": row.payload_sha256,
         }
+        if direct:
+            body["selection_mode"] = "broker_pool"
+        else:
+            body.update(vm_id=row.vm_id, readiness_check_id=row.readiness_check_id)
         body.update(
             timeout_seconds=row.config_snapshot["timeout_seconds"],
             max_output_bytes=65536,
@@ -103,24 +106,25 @@ def dispatch_submission(submission_id):
         # Always reconcile a previously sent request. A restarted worker cannot POST it again.
         method = "POST" if row.dispatch_state == "PENDING" else "GET"
         if method == "POST":
+            direct = row.config_snapshot.get("assignment_mode") == "broker_pool"
             limit = row.config_snapshot.get("timeout_seconds")
             if type(limit) is not int or not 10 <= limit <= 180:
                 row.last_error_code = "WINDOWS_CONFIG_NOT_READY"
                 row.save(update_fields=["last_error_code", "updated_at"])
                 return row
-            if not _readiness_is_fresh(row, now):
+            if not direct and not _readiness_is_fresh(row, now):
                 # shortcut: the bounded Scheduler lookup holds this row lock; use a worker lease if contention grows.
                 if not refresh_windows_assignment(row):
                     return row
                 now = timezone.now()
-            if not _readiness_is_fresh(row, now):
+            if not direct and not _readiness_is_fresh(row, now):
                 row.last_error_code = "WINDOWS_NOT_READY"
                 row.save(update_fields=["last_error_code", "updated_at"])
                 return row
             # Include dispatch, result delivery and lease release before Broker expiry.
-            if not row.lease_expires_at or row.lease_expires_at <= now + timedelta(
+            if not direct and (not row.lease_expires_at or row.lease_expires_at <= now + timedelta(
                 seconds=limit + LEASE_FINISH_MARGIN_SECONDS
-            ):
+            )):
                 row.last_error_code = "WINDOWS_LEASE_TOO_SHORT"
                 row.save(update_fields=["last_error_code", "updated_at"])
                 return row

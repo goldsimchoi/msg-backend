@@ -326,6 +326,12 @@ def release_windows_assignment(submission_id):
                 "Execution must be resolved before lease release.",
                 409,
             )
+        if submission.config_snapshot.get("assignment_mode") == "broker_pool":
+            submission.lease_released_at = timezone.now()
+            submission.last_error_code = ""
+            submission.save(update_fields=["lease_released_at", "last_error_code", "updated_at"])
+            purge_released_payload(submission)
+            return submission
         try:
             result = _post_scheduler(
                 f"/api/windows-assignments/{submission.lease_id}/release"

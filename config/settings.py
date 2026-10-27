@@ -366,6 +366,9 @@ except ValueError as error:
 if not isinstance(EXE_CHECKERS, dict):
     raise ImproperlyConfigured("EXE_CHECKERS_JSON은 worker UUID별 객체여야 합니다")
 EXE_DISPATCH_ENABLED = os.getenv("EXE_DISPATCH_ENABLED", "False").lower() == "true"
+# Windows EXE only: Backend -> Runtime -> Broker pool, without Scheduler.
+EXE_WINDOWS_DIRECT_RUNTIME_ENABLED = os.getenv("EXE_WINDOWS_DIRECT_RUNTIME_ENABLED", "False").lower() == "true"
+EXE_WINDOWS_RUNTIME_POOL_ID = os.getenv("EXE_WINDOWS_RUNTIME_POOL_ID", "")
 
 # Proposed Runtime #70 APIs; never enable before provider deployment and approval.
 IMAGE_PREPARATION_ENABLED = os.getenv("IMAGE_PREPARATION_ENABLED", "False").lower() == "true"
